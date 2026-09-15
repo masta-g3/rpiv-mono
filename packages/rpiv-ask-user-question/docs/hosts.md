@@ -98,7 +98,7 @@ text instead of treating the failure as a decline.
 
 ## Optional external answers (patched fork)
 
-The maintained `2.10.0-hub.1` fork retains the original package name,
+The maintained `2.10.1-hub.1` fork retains the original package name,
 `@juicesharp/rpiv-ask-user-question`. It adds a producer-owned Pi event-bus
 protocol. It has no Hub dependency, network listener, or saved question store.
 Native questionnaires and RPC dialogs keep their existing result format.
@@ -159,11 +159,11 @@ After installation is approved, use the same verified artifact on each machine:
 
 ```sh
 # Verify this checksum against the maintainer's recorded SHA-256 first.
-shasum -a 256 /path/to/juicesharp-rpiv-ask-user-question-2.10.0-hub.1.tgz
-PATCH_HOME="$HOME/.local/share/pi-hub-questions/2.10.0-hub.1"
+shasum -a 256 /path/to/juicesharp-rpiv-ask-user-question-2.10.1-hub.1.tgz
+PATCH_HOME="$HOME/.local/share/pi-hub-questions/2.10.1-hub.1"
 mkdir -p "$PATCH_HOME"
 npm install --prefix "$PATCH_HOME" --save-exact \
-  /path/to/juicesharp-rpiv-ask-user-question-2.10.0-hub.1.tgz
+  /path/to/juicesharp-rpiv-ask-user-question-2.10.1-hub.1.tgz
 ```
 
 Close running Pi sessions before changing their package configuration. Save a

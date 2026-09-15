@@ -4,6 +4,8 @@ All notable changes to this package will be documented in this file.
 
 ## [Unreleased]
 
+## [2.10.1] - 2026-09-13
+
 ## [2.10.0] - 2026-09-12
 
 ## [2.9.0] - 2026-09-01
