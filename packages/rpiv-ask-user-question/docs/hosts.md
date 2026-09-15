@@ -95,3 +95,90 @@ When it does happen, you get a structured envelope rather than a raw `TypeError`
 
 Both messages tell the model the questions were never shown and to ask them as plain chat
 text instead of treating the failure as a decline.
+
+## Optional external answers (patched fork)
+
+The maintained `2.10.0-hub.1` fork retains the original package name,
+`@juicesharp/rpiv-ask-user-question`. It adds a producer-owned Pi event-bus
+protocol. It has no Hub dependency, network listener, or saved question store.
+Native questionnaires and RPC dialogs keep their existing result format.
+
+The public types and channel constants are exported from the package's `events`
+subpath and main entry. Subscribe to responses **before** emitting a request:
+responses can arrive synchronously. Match the response `id` to the request.
+
+- Request channel: `rpiv:ask-user:request`.
+- Response channel: `rpiv:ask-user:response`.
+- Query: `{version: 1, id: string, kind: "query"}`.
+- Submit: `{version: 1, id: string, kind: "submit", toolCallId: string, answers: AnswerInput[]}`.
+- Query success: `{version: 1, id, ok: true, pending: [{toolCallId, params}]}`.
+- Submit success: `{version: 1, id, ok: true, accepted: true}`.
+- Failure: `{version: 1, id, ok: false, error: "invalid" | "stale" | "unsupported"}`.
+
+`params` contains the full normalized, validated `QuestionParams`, including
+previews. Each zero-based question index must appear exactly once in `answers`:
+
+```ts
+type AnswerInput =
+  | { questionIndex: number; kind: "option"; optionIndex: number }
+  | { questionIndex: number; kind: "custom"; text: string }
+  | { questionIndex: number; kind: "multi"; optionIndices: number[] };
+```
+
+Single choices require a single-select question. Multi choices require a
+multiselect question; empty selections are valid, repeated or out-of-range
+indices are not. Custom text must be nonblank and is preserved verbatim.
+Unknown fields are ignored; labels, question text and previews are always built
+from the original request, never trusted from the answer sender.
+
+Capability is TUI-only (`ctx.mode === "tui"` and `hasUI`). RPC, print, JSON and
+older hosts without an explicit mode are unsupported. Before session startup,
+queries also return unsupported. Only a native component with its completion
+callback available appears in `pending`; lazy loading is not answerable.
+Consumers can query after startup even if they missed the prompt notification.
+Malformed messages without a string correlation ID get no reply. Unsupported
+versions get `unsupported`.
+
+The first full native or external submission wins. Native drafts are not synced.
+Acceptance removes the pending request before invoking the same native `done`
+callback, which resolves the actual tool and closes its overlay. Abort, session
+replacement/tree navigation and shutdown cancel pending native waits. Shutdown
+also removes the request listener. Late submissions are stale. There is no remote
+cancel operation: closing an external form must leave the real question open.
+The existing prompt and blocked notification payloads are unchanged.
+
+### Distributing the fork
+
+Build one npm tarball from this package and keep that exact immutable artifact
+(with a recorded SHA-256) for both machines. Pi treats local files as extension
+source files, so **do not pass the `.tgz` directly to `pi install`**. Use npm to
+install it into a new, versioned directory, then register that package directory
+with Pi. The original package's installed files remain untouched.
+
+After installation is approved, use the same verified artifact on each machine:
+
+```sh
+# Verify this checksum against the maintainer's recorded SHA-256 first.
+shasum -a 256 /path/to/juicesharp-rpiv-ask-user-question-2.10.0-hub.1.tgz
+PATCH_HOME="$HOME/.local/share/pi-hub-questions/2.10.0-hub.1"
+mkdir -p "$PATCH_HOME"
+npm install --prefix "$PATCH_HOME" --save-exact \
+  /path/to/juicesharp-rpiv-ask-user-question-2.10.0-hub.1.tgz
+```
+
+Close running Pi sessions before changing their package configuration. Save a
+copy of Pi's settings, then use `pi list` to find the original source. Remove
+that source with `pi remove <original-source>` and remove any explicit extension
+path that also loads it. Only then register the replacement:
+
+```sh
+pi install "$PATCH_HOME/node_modules/@juicesharp/rpiv-ask-user-question"
+```
+
+**Never register both copies of `ask_user_question`.** Start Pi again and verify
+that one questionnaire tool is available. To roll back, close Pi, remove the
+replacement source, and restore the original source from the saved settings.
+A local versioned directory does not follow upstream updates. Keep its npm lock
+file with the artifact if matching the dependency graph across machines matters.
+These instructions do not authorize or perform installation or publication.
+Other monorepo packages keep their own release versions.
