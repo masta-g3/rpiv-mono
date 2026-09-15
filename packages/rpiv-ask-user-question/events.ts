@@ -9,7 +9,8 @@
  *   3. Breaking changes (rename, retype, remove a field; change emission
  *      semantics) require a NEW channel, e.g. `rpiv:ask-user:prompt.v2`,
  *      with dual-emit during a deprecation window.
- *   4. No `version` field inside payloads. Version via channel name only.
+ *   4. Notification payloads version via channel name only. The optional
+ *      request/reply protocol below explicitly carries `version: 1`.
  *   5. Payloads must be JSON-safe: primitives, arrays, plain objects.
  *      No Set/Map/Date/class instances — payloads must survive JSON
  *      serialization when listeners forward them across process or
@@ -57,3 +58,22 @@ export interface AskUserPromptOption {
 	/** True iff the option carries rich preview content (content not shipped). */
 	hasPreview: boolean;
 }
+
+/** Optional native-TUI request/reply protocol. Unlike notifications, replies carry a wire version. */
+export const ASK_USER_REQUEST_EVENT = "rpiv:ask-user:request" as const;
+export const ASK_USER_RESPONSE_EVENT = "rpiv:ask-user:response" as const;
+
+export type AnswerInput =
+	| { questionIndex: number; kind: "option"; optionIndex: number }
+	| { questionIndex: number; kind: "custom"; text: string }
+	| { questionIndex: number; kind: "multi"; optionIndices: number[] };
+
+export type AskUserRequest = { version: 1; id: string } & (
+	| { kind: "query" }
+	| { kind: "submit"; toolCallId: string; answers: AnswerInput[] }
+);
+export type AskUserResponse = { version: 1; id: string } & (
+	| { ok: true; pending: Array<{ toolCallId: string; params: import("./tool/types.js").QuestionParams }> }
+	| { ok: true; accepted: true }
+	| { ok: false; error: "invalid" | "stale" | "unsupported" }
+);

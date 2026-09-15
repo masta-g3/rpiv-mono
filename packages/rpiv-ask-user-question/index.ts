@@ -40,12 +40,17 @@ try {
 }
 
 export {
+	type AnswerInput,
 	ASK_USER_BLOCKED_EVENT,
 	ASK_USER_PROMPT_EVENT,
+	ASK_USER_REQUEST_EVENT,
+	ASK_USER_RESPONSE_EVENT,
 	type AskUserBlockedEventPayload,
 	type AskUserPromptEventPayload,
 	type AskUserPromptOption,
 	type AskUserPromptQuestion,
+	type AskUserRequest,
+	type AskUserResponse,
 } from "./events.js";
 
 export default function (pi: ExtensionAPI) {

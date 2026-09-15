@@ -21,6 +21,7 @@
  */
 
 import { displayLabel, t } from "./state/i18n-bridge.js";
+import { buildAnswer } from "./tool/build-answer.js";
 import type { QuestionAnswer, QuestionData, QuestionnaireResult, QuestionParams } from "./tool/types.js";
 
 /**
@@ -115,19 +116,12 @@ async function askSingleSelect(
 	// from a dismissal — treat it as one rather than fabricate an answer.
 	if (idx == null) return undefined;
 	if (idx < q.options.length) {
-		const o = q.options[idx];
-		return {
-			questionIndex,
-			question: q.question,
-			kind: "option",
-			answer: o.label,
-			preview: o.preview && o.preview.length > 0 ? o.preview : undefined,
-		};
+		return buildAnswer(q, { questionIndex, kind: "option", optionIndex: idx });
 	}
 	// "Type something." sentinel → free-text follow-up.
 	const typed = await ui.input(`${header}${q.question}\n\n${t("rpc.custom_answer_title", CUSTOM_ANSWER_TITLE)}`, "");
 	if (typed == null) return undefined;
-	return { questionIndex, question: q.question, kind: "custom", answer: typed };
+	return buildAnswer(q, { questionIndex, kind: "custom", text: typed });
 }
 
 /** `undefined` means the user dismissed the dialog (cancel the questionnaire). */
@@ -146,21 +140,16 @@ async function askMultiSelect(
 	const trimmed = value.trim();
 	if (trimmed.length === 0) {
 		// Deliberate empty commit — same as pressing "Next" with nothing toggled.
-		return { questionIndex, question: q.question, kind: "multi", answer: null, selected: [] };
+		return buildAnswer(q, { questionIndex, kind: "multi", optionIndices: [] });
 	}
 	const tokens = trimmed.split(/[,\s]+/).filter((tok) => tok.length > 0);
 	const indices = tokens.map((tok) => (/^\d+\.?$/.test(tok) ? parseIndex(tok, q.options.length) : null));
 	if (indices.every((i): i is number => i != null)) {
-		const selected: string[] = [];
-		for (const i of indices) {
-			const label = q.options[i].label;
-			if (!selected.includes(label)) selected.push(label);
-		}
-		return { questionIndex, question: q.question, kind: "multi", answer: null, selected };
+		return buildAnswer(q, { questionIndex, kind: "multi", optionIndices: indices });
 	}
 	// Any non-index token (words, or an out-of-range number like "13" for three
 	// options) means the user typed an answer, not a selection. Preserve it
 	// verbatim as a custom answer instead of silently dropping their input —
 	// this is also the multi-select "Type something." escape.
-	return { questionIndex, question: q.question, kind: "custom", answer: trimmed };
+	return buildAnswer(q, { questionIndex, kind: "custom", text: trimmed });
 }

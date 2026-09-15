@@ -13,6 +13,7 @@ import {
 	type AskUserBlockedEventPayload,
 	type AskUserPromptEventPayload,
 } from "./events.js";
+import { registerExternalQuestions } from "./external-question.js";
 // Static import is fine — rpc-fallback pulls only types + the i18n bridge,
 // none of the ~560ms TUI render graph that QuestionnaireSession lazy-loads.
 import { type DialogUI, hasDialogUI, runRpcQuestionnaire } from "./rpc-fallback.js";
@@ -192,8 +193,9 @@ function makeSessionFactory(config: {
 	canReopenWhileHidden: boolean;
 	sessionRef: SessionRef;
 	Session: SessionModule["QuestionnaireSession"];
+	completion: ReturnType<ReturnType<typeof registerExternalQuestions>["create"]>;
 }) {
-	const { ctx, typed, itemsByTab, collapseKey, canReopenWhileHidden, sessionRef, Session } = config;
+	const { ctx, typed, itemsByTab, collapseKey, canReopenWhileHidden, sessionRef, Session, completion } = config;
 	return (
 		tui: TUI,
 		theme: Theme,
@@ -205,7 +207,7 @@ function makeSessionFactory(config: {
 			theme,
 			params: typed,
 			itemsByTab,
-			done,
+			done: completion.settle,
 			keybindings,
 			editInput: async (value) => {
 				try {
@@ -228,6 +230,7 @@ function makeSessionFactory(config: {
 			canReopenWhileHidden,
 		});
 		sessionRef.current = session;
+		completion.bind(done);
 		return session.component;
 	};
 }
@@ -302,6 +305,7 @@ Preview content is rendered as markdown in a monospace box. Multi-line text with
 
 export function registerAskUserQuestionTool(pi: ExtensionAPI): void {
 	const guidance = validateGuidanceFields(loadConfig().guidance);
+	const external = registerExternalQuestions(pi);
 	pi.registerTool({
 		name: ASK_USER_QUESTION_TOOL_NAME,
 		label: "Ask User Question",
@@ -311,6 +315,7 @@ export function registerAskUserQuestionTool(pi: ExtensionAPI): void {
 		parameters: QuestionParamsSchema,
 
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			external.setSupported(ctx.hasUI && ctx.mode === "tui");
 			// Line-terminator normalization runs once here, ahead of validation, so
 			// every downstream consumer — validator, TUI, RPC walker, envelope, prompt
 			// event — sees the same clean text (#192).
@@ -339,69 +344,80 @@ export function registerAskUserQuestionTool(pi: ExtensionAPI): void {
 				return runRpcPath(pi, ctx.ui, typed);
 			}
 
-			const itemsByTab: WrappingSelectItem[][] = typed.questions.map((q) => buildItemsForQuestion(q));
-
-			// Lazy — QuestionnaireSession pulls the ~560ms view/TUI render graph;
-			// load it only when the tool runs, not at extension registration.
-			const sessionLoad = await loadQuestionnaireSession();
-			if (!sessionLoad.ok) {
-				return buildToolResult(sessionLoad.message, { answers: [], cancelled: true, error: sessionLoad.error });
-			}
-			const { QuestionnaireSession } = sessionLoad.module;
-			// Resolve the collapse/expand key spec from config. Default is `ctrl+]`; users
-			// with non-US layouts (e.g. Latin American, where `]` is shifted) can override
-			// via the `collapseKey` config field. `resolveCollapseKey` also accepts the
-			// sentinel value `"off"` to disable the shortcut entirely.
-			const collapseKey = resolveCollapseKey(loadConfig());
-
-			// Capture the overlay handle so the session can call `setHidden()` when the
-			// user toggles collapse, and register a raw terminal input listener for the
-			// same key so the toggle still works while the overlay is hidden (pi-tui does
-			// not route input to a hidden overlay's `component.handleInput`).
-			const sessionRef: SessionRef = { current: null };
-			const overlayHandleRef: OverlayHandleRef = { current: undefined };
-			const removeOverlayInputListener = registerCollapseKeyListener(ctx, collapseKey, sessionRef, overlayHandleRef);
-			// Hiding the overlay is only reversible through the raw listener above, so
-			// the session may emit `setHidden` only when it was actually registered;
-			// otherwise collapse falls back to the visible one-line row.
-			const canReopenWhileHidden = removeOverlayInputListener !== undefined;
-
-			emitAskUserBlockedEvent(pi, true);
+			const completion = external.create(_toolCallId, typed, _signal);
 			try {
-				emitTerminalAttention();
-				const result = await ctx.ui.custom<QuestionnaireResult>(
-					makeSessionFactory({
-						ctx,
-						typed,
-						itemsByTab,
-						collapseKey,
-						canReopenWhileHidden,
-						sessionRef,
-						Session: QuestionnaireSession,
-					}),
-					{
-						overlay: true,
-						overlayOptions: {
-							anchor: "bottom-center",
-							width: "100%",
-							maxHeight: "100%",
-							margin: { left: 0, right: 0, bottom: 0 },
-						},
-						onHandle: (handle) => {
-							overlayHandleRef.current = handle;
-							sessionRef.current?.setOverlayHandle(handle);
-						},
-					},
-				);
+				const itemsByTab: WrappingSelectItem[][] = typed.questions.map((q) => buildItemsForQuestion(q));
 
-				if (result === undefined) {
-					return resolveUndefinedResult(ctx, typed);
+				// Lazy — QuestionnaireSession pulls the ~560ms view/TUI render graph;
+				// load it only when the tool runs, not at extension registration.
+				const sessionLoad = await loadQuestionnaireSession();
+				if (!sessionLoad.ok) {
+					return buildToolResult(sessionLoad.message, { answers: [], cancelled: true, error: sessionLoad.error });
 				}
+				const { QuestionnaireSession } = sessionLoad.module;
+				// Resolve the collapse/expand key spec from config. Default is `ctrl+]`; users
+				// with non-US layouts (e.g. Latin American, where `]` is shifted) can override
+				// via the `collapseKey` config field. `resolveCollapseKey` also accepts the
+				// sentinel value `"off"` to disable the shortcut entirely.
+				const collapseKey = resolveCollapseKey(loadConfig());
 
-				return buildQuestionnaireResponse(result, typed);
+				// Capture the overlay handle so the session can call `setHidden()` when the
+				// user toggles collapse, and register a raw terminal input listener for the
+				// same key so the toggle still works while the overlay is hidden (pi-tui does
+				// not route input to a hidden overlay's `component.handleInput`).
+				const sessionRef: SessionRef = { current: null };
+				const overlayHandleRef: OverlayHandleRef = { current: undefined };
+				const removeOverlayInputListener = registerCollapseKeyListener(
+					ctx,
+					collapseKey,
+					sessionRef,
+					overlayHandleRef,
+				);
+				// Hiding the overlay is only reversible through the raw listener above, so
+				// the session may emit `setHidden` only when it was actually registered;
+				// otherwise collapse falls back to the visible one-line row.
+				const canReopenWhileHidden = removeOverlayInputListener !== undefined;
+
+				emitAskUserBlockedEvent(pi, true);
+				try {
+					emitTerminalAttention();
+					const result = await ctx.ui.custom<QuestionnaireResult>(
+						makeSessionFactory({
+							ctx,
+							typed,
+							itemsByTab,
+							collapseKey,
+							canReopenWhileHidden,
+							sessionRef,
+							Session: QuestionnaireSession,
+							completion,
+						}),
+						{
+							overlay: true,
+							overlayOptions: {
+								anchor: "bottom-center",
+								width: "100%",
+								maxHeight: "100%",
+								margin: { left: 0, right: 0, bottom: 0 },
+							},
+							onHandle: (handle) => {
+								overlayHandleRef.current = handle;
+								sessionRef.current?.setOverlayHandle(handle);
+							},
+						},
+					);
+
+					if (result === undefined) {
+						return resolveUndefinedResult(ctx, typed);
+					}
+
+					return buildQuestionnaireResponse(result, typed);
+				} finally {
+					removeOverlayInputListener?.();
+					emitAskUserBlockedEvent(pi, false);
+				}
 			} finally {
-				removeOverlayInputListener?.();
-				emitAskUserBlockedEvent(pi, false);
+				completion.dispose();
 			}
 		},
 	});
