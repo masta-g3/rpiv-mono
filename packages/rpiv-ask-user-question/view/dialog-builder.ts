@@ -15,7 +15,9 @@ export const HINT_PART_NEW_LINE = "Shift+Enter for newline";
 export const HINT_PART_CLEAR = "Ctrl+U to clear";
 export const HINT_PART_TOGGLE = "Space to toggle";
 export const HINT_PART_NOTES = "n to add notes";
-export const HINT_PART_TAB = "Tab to switch questions";
+export const HINT_PART_TAB = "←/→ to switch questions";
+export const HINT_PART_PREVIEW = "Tab to focus preview";
+export const HINT_PART_PREVIEW_SCROLL = "↑/↓ scroll · PgUp/PgDn page · Home/End";
 export const HINT_PART_CANCEL = "Esc to cancel";
 /**
  * Collapse/expand hint copy is templated on `KEY_PLACEHOLDER` because the
@@ -192,15 +194,23 @@ export class DialogView implements StatefulView<DialogProps> {
 
 		// Cache heading rows (avoid double construction in render and container build).
 		const headingRowCache = strategy.headingRows(state);
-		const headingCount = headingRowCache.length;
-
-		// Build container WITHOUT residual spacer — spacer handled below based on overflow.
-		const natural = this.buildContainerFromStrategy(strategy, headingRowCache).render(width);
+		const headingCount = headingRowCache.reduce((count, row) => count + row.render(width).length, 0);
 
 		// Fixed region sizes (deterministic from structure).
 		// TabBar.render() returns [tabLine, ""] — always 2 rows.
 		const topFixed = 1 + (this.config.isMulti && this.config.tabBar ? 2 : 0) + 1;
 		const bottomFixed = 1 + strategy.footerRowCount;
+		if (strategy === this.questionStrategy) {
+			const midHeight = strategy.midRows(state).reduce((n, row) => n + row.render(width).length, 0);
+			const availableBody = this.config.getTerminalRows() - topFixed - bottomFixed - headingCount - 1 - midHeight;
+			const pane = this.liveProps.activePreviewPane as StatefulView<PreviewPaneProps> & {
+				setAvailableHeight?: (rows: number) => void;
+			};
+			pane.setAvailableHeight?.(Math.max(1, availableBody));
+		}
+
+		// Build container WITHOUT residual spacer — spacer handled below based on overflow.
+		const natural = this.buildContainerFromStrategy(strategy, headingRowCache).render(width);
 		const middleRows = natural.length - topFixed - bottomFixed;
 
 		// Residual spacer: equalizes total height across tabs (only needed when no overflow).

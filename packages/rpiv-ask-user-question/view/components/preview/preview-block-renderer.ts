@@ -34,6 +34,8 @@ function innerWidthFor(width: number): number {
 	return Math.max(1, width - BORDER_HORIZONTAL_OVERHEAD - 2 * BORDER_INNER_PADDING_HORIZONTAL);
 }
 
+export type PreviewScrollAmount = -1 | 1 | "page-up" | "page-down" | "home" | "end";
+
 export interface PreviewBlockRendererConfig {
 	question: QuestionData;
 	theme: Theme;
@@ -53,6 +55,8 @@ export interface PreviewBlockRendererConfig {
 export class PreviewBlockRenderer {
 	private readonly theme: Theme;
 	private readonly cache: MarkdownContentCache;
+	private readonly scrollOffsets = new Map<number, number>();
+	private readonly endPinned = new Set<number>();
 
 	constructor(config: PreviewBlockRendererConfig) {
 		this.theme = config.theme;
@@ -76,8 +80,8 @@ export class PreviewBlockRenderer {
 	 * NOTES_AFFORDANCE_OVERHEAD`. Always returns the same value as `renderBlock(...).length`
 	 * — the affordance overhead is constant, not gated by `focused`/`notesVisible`.
 	 */
-	blockHeight(width: number, optionIndex: number, mode: PreviewLayoutMode): number {
-		const contentBudget = contentBudgetFor(mode);
+	blockHeight(width: number, optionIndex: number, mode: PreviewLayoutMode, viewportRows?: number): number {
+		const contentBudget = viewportRows ?? contentBudgetFor(mode);
 		const innerWidth = innerWidthFor(width);
 		const rawRows = this.cache.bodyFor(optionIndex, innerWidth).length;
 		const contentRows = Math.min(rawRows, contentBudget);
@@ -96,23 +100,53 @@ export class PreviewBlockRenderer {
 		mode: PreviewLayoutMode,
 		focused: boolean,
 		notesVisible: boolean,
+		viewportRows?: number,
+		previewFocused = false,
 	): string[] {
-		const contentBudget = contentBudgetFor(mode);
+		const contentBudget = Math.max(1, viewportRows ?? contentBudgetFor(mode));
 		const maxInnerWidth = innerWidthFor(width);
 
 		const raw = this.cache.bodyFor(optionIndex, maxInnerWidth);
-		const truncated = raw.length > contentBudget;
-		const hidden = truncated ? raw.length - contentBudget : 0;
-		const contentLines = truncated ? raw.slice(0, contentBudget) : raw;
+		const maxStart = Math.max(0, raw.length - contentBudget);
+		const start = this.endPinned.has(optionIndex)
+			? maxStart
+			: Math.min(this.scrollOffsets.get(optionIndex) ?? 0, maxStart);
+		this.scrollOffsets.set(optionIndex, start);
+		const contentLines = raw.slice(start, start + contentBudget);
 
 		const { boxWidth } = computeBoxDimensions(contentLines, maxInnerWidth);
-		const colorFn = (s: string) => this.theme.fg("accent", s);
-		const boxedLines = renderBorderedBox(contentLines, boxWidth, colorFn, hidden);
+		const colorFn = (s: string) =>
+			previewFocused ? this.theme.bg("selectedBg", this.theme.fg("accent", s)) : this.theme.fg("accent", s);
+		const position =
+			raw.length > contentBudget
+				? { start: start + 1, end: start + contentLines.length, total: raw.length }
+				: undefined;
+		const boxedLines = renderBorderedBox(contentLines, boxWidth, colorFn, position);
 
 		const showAffordance = focused && !notesVisible && this.cache.has(optionIndex);
 		const affordance = showAffordance
 			? this.theme.fg("muted", t("preview.notes_affordance", NOTES_AFFORDANCE_TEXT))
 			: "";
 		return [...boxedLines, "", affordance];
+	}
+
+	scroll(optionIndex: number, amount: PreviewScrollAmount, viewportRows: number, width: number): void {
+		const budget = Math.max(1, viewportRows);
+		const total = this.cache.bodyFor(optionIndex, innerWidthFor(width)).length;
+		const current = this.scrollOffsets.get(optionIndex) ?? 0;
+		const next =
+			amount === "home"
+				? 0
+				: amount === "end"
+					? total
+					: current + (amount === "page-up" ? -budget : amount === "page-down" ? budget : amount);
+		const maxStart = Math.max(0, total - budget);
+		const clamped = Math.max(0, Math.min(next, maxStart));
+		this.scrollOffsets.set(optionIndex, clamped);
+		if (amount === "end" || ((amount === "page-down" || amount === 1) && clamped === maxStart)) {
+			this.endPinned.add(optionIndex);
+		} else {
+			this.endPinned.delete(optionIndex);
+		}
 	}
 }

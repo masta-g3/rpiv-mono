@@ -13,7 +13,7 @@
   "hint.clear": "Ctrl+U zum Leeren",
   "hint.toggle": "Leertaste zum Umschalten",
   "hint.notes": "n für Notizen",
-  "hint.tab": "Tab wechselt die Frage",
+  "hint.tab": "←/→ wechselt die Frage",
   "hint.cancel": "Esc zum Abbrechen",
 
   "review.heading": "Antworten überprüfen",

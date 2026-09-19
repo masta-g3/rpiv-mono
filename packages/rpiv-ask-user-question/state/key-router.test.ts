@@ -147,8 +147,52 @@ describe("routeKey — nav", () => {
 	});
 });
 
+describe("routeKey — preview focus and scrolling", () => {
+	const previewQuestions = [
+		makeQuestion({ options: [{ label: "A", description: "a", preview: "one\ntwo" }] }),
+		makeQuestion(),
+	];
+	const previewRuntime = (over: Partial<QuestionnaireRuntime> = {}) =>
+		makeRuntime({ questions: previewQuestions, hasPreview: true, ...over });
+
+	it("Tab moves focus into a preview and Enter returns it to options without submitting", () => {
+		expect(routeKey(BYTE_TAB, makeState(), previewRuntime())).toEqual({ kind: "preview_focus", focused: true });
+		expect(routeKey(sentinel(KEY.CONFIRM), makeState({ previewFocused: true }), previewRuntime())).toEqual({
+			kind: "preview_focus",
+			focused: false,
+		});
+	});
+
+	it.each([
+		[sentinel(KEY.UP), -1],
+		[sentinel(KEY.DOWN), 1],
+		["\x1b[5~", "page-up"],
+		["\x1b[6~", "page-down"],
+		["\x1b[H", "home"],
+		["\x1b[F", "end"],
+	] as const)("routes %s while the preview has focus", (key, amount) => {
+		expect(routeKey(key, makeState({ previewFocused: true }), previewRuntime())).toEqual({
+			kind: "preview_scroll",
+			amount,
+		});
+	});
+
+	it("keeps left/right question navigation while the preview has focus", () => {
+		expect(routeKey(BYTE_RIGHT, makeState({ previewFocused: true }), previewRuntime())).toEqual({
+			kind: "tab_switch",
+			nextTab: 1,
+		});
+	});
+
+	it("keeps Esc cancellation while the preview has focus", () => {
+		expect(routeKey(sentinel(KEY.CANCEL), makeState({ previewFocused: true }), previewRuntime())).toEqual({
+			kind: "cancel",
+		});
+	});
+});
+
 describe("routeKey — tab_switch", () => {
-	it("Tab cycles forward through total tabs (questions + Submit)", () => {
+	it("Tab cycles forward through total tabs (questions + Submit) when no preview exists", () => {
 		expect(routeKey(BYTE_TAB, makeState(), makeRuntime())).toEqual({
 			kind: "tab_switch",
 			nextTab: 1,

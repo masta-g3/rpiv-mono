@@ -11,7 +11,8 @@ vi.mock("@earendil-works/pi-tui", async (orig) => {
 			markdownConstructed++;
 		}
 		render(width: number): string[] {
-			return [`MD[${width}]:${this.text.slice(0, Math.max(0, width - 4))}`];
+			const lines = this.text.startsWith("line 1\n") ? this.text.split("\n") : [this.text];
+			return lines.map((line) => `MD[${width}]:${line.slice(0, Math.max(0, width - 4))}`);
 		}
 		invalidate(): void {}
 		setText(t: string): void {
@@ -111,6 +112,31 @@ describe("PreviewBlockRenderer.renderBlock", () => {
 		expect(linesA.some((l) => l.includes(NOTES_AFFORDANCE_TEXT))).toBe(true);
 		expect(linesB.some((l) => l.includes(NOTES_AFFORDANCE_TEXT))).toBe(false);
 		expect(linesA.length).toBe(linesB.length);
+	});
+});
+
+describe("PreviewBlockRenderer scrolling", () => {
+	const longQuestion: QuestionData = {
+		question: "pick",
+		header: "pick",
+		options: [
+			{ label: "A", description: "", preview: Array.from({ length: 30 }, (_, i) => `line ${i + 1}`).join("\n") },
+		],
+	};
+
+	it("renders a position range with overflow cues and scrolls by line, page, and endpoint", () => {
+		const r = new PreviewBlockRenderer({ question: longQuestion, theme, markdownTheme });
+		const first = r.renderBlock(60, 0, "side-by-side", false, false, 5).join("\n");
+		expect(first).toContain("lines 1–5 of 30");
+		expect(first).toContain("↓");
+		r.scroll(0, 1, 5, 60);
+		expect(r.renderBlock(60, 0, "side-by-side", false, false, 5).join("\n")).toContain("lines 2–6 of 30");
+		r.scroll(0, "page-down", 5, 60);
+		expect(r.renderBlock(60, 0, "side-by-side", false, false, 5).join("\n")).toContain("lines 7–11 of 30");
+		r.scroll(0, "end", 5, 60);
+		const end = r.renderBlock(60, 0, "side-by-side", false, false, 5).join("\n");
+		expect(end).toContain("lines 26–30 of 30");
+		expect(end).toContain("↑");
 	});
 });
 

@@ -14,6 +14,8 @@ import {
 	HINT_PART_NAV,
 	HINT_PART_NEW_LINE,
 	HINT_PART_NOTES,
+	HINT_PART_PREVIEW,
+	HINT_PART_PREVIEW_SCROLL,
 	HINT_PART_TAB,
 	HINT_PART_TOGGLE,
 	INCOMPLETE_WARNING_PREFIX,
@@ -286,8 +288,16 @@ export function buildHintText(
 	state: DialogState,
 	collapseKey: string,
 ): string {
+	const selectedHasPreview = Boolean(question?.options[state.optionIndex]?.preview?.length);
+	if (state.previewFocused) {
+		const parts = [HINT_PART_PREVIEW_SCROLL, "Enter to return"];
+		if (isMulti) parts.push(t("hint.tab", HINT_PART_TAB));
+		parts.push(t("hint.cancel", HINT_PART_CANCEL));
+		return parts.join(" · ");
+	}
 	const parts: string[] = [t("hint.enter", HINT_PART_ENTER), t("hint.navigate", HINT_PART_NAV)];
 	if (question?.multiSelect === true) parts.push(t("hint.toggle", HINT_PART_TOGGLE));
+	if (selectedHasPreview) parts.push(HINT_PART_PREVIEW);
 	if (question && !state.notesVisible && !state.inputMode) parts.push(t("hint.notes", HINT_PART_NOTES));
 	if (isMulti) parts.push(t("hint.tab", HINT_PART_TAB));
 	parts.push(t("hint.cancel", HINT_PART_CANCEL));

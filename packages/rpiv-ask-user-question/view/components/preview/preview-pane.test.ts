@@ -149,6 +149,24 @@ describe("PreviewPane.render — layout switching", () => {
 	});
 });
 
+describe("PreviewPane — preview focus geometry", () => {
+	it("reports the stacked preview rows instead of option rows while preview has keyboard focus", () => {
+		const question: QuestionData = {
+			question: "pick",
+			header: "pick",
+			options: [{ label: "A", description: "", preview: "one\ntwo\nthree" }],
+		};
+		const { pane, optionListView } = makePane(question, () => 80);
+		pane.setAvailableHeight(6);
+		pane.setProps({ notesVisible: false, selectedIndex: 0, focused: false, previewFocused: true, inputMode: false });
+		optionListView.setProps({ selectedIndex: 0, focused: false, inputBuffer: "" });
+		const optionRows = optionListView.render(80).length;
+		const range = pane.focusedItemRowRange(80);
+		expect(range[0]).toBeGreaterThanOrEqual(optionRows + 1);
+		expect(range[1]).toBeGreaterThan(range[0]);
+	});
+});
+
 describe("PreviewPane — cache + invalidate", () => {
 	const question: QuestionData = {
 		question: "pick",
@@ -626,11 +644,11 @@ describe("renderBorderedBox helper", () => {
 		expect(visibleWidth(out[1])).toBe(20);
 	});
 
-	it("emits truncation indicator on bottom row when hidden > 0", () => {
-		const out = renderBorderedBox(["a", "b"], 30, (s) => s, 5);
+	it("emits position and overflow cues on the bottom row for a partial viewport", () => {
+		const out = renderBorderedBox(["a", "b"], 30, (s) => s, { start: 3, end: 4, total: 9 });
 		const bottom = out[out.length - 1];
-		expect(bottom).toContain("✂");
-		expect(bottom).toContain("5 lines hidden");
+		expect(bottom).toContain("↑↓");
+		expect(bottom).toContain("lines 3–4 of 9");
 		expect(bottom.startsWith("└")).toBe(true);
 		expect(bottom.endsWith("┘")).toBe(true);
 	});

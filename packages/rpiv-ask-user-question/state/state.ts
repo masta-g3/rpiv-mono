@@ -10,6 +10,8 @@ export interface QuestionnaireState {
 	optionIndex: number;
 	inputMode: boolean;
 	notesVisible: boolean;
+	/** True while keyboard scrolling is directed to the selected option's preview. */
+	previewFocused?: boolean;
 	answers: ReadonlyMap<number, QuestionAnswer>;
 	multiSelectChecked: ReadonlySet<number>;
 	/** In-flight custom answers keyed by tab. A present empty string overrides an older answer. */
@@ -56,6 +58,8 @@ export interface QuestionnaireRuntime {
 	isMulti: boolean;
 	currentItem: WrappingSelectItem | undefined;
 	items: readonly WrappingSelectItem[];
+	/** Whether the selected option on the active question has a preview. */
+	hasPreview?: boolean;
 	/**
 	 * Key spec for the collapse/expand shortcut, e.g. `"ctrl+]"` or `"alt+o"`. Resolved
 	 * from `AskUserQuestionConfig.collapseKey` (or the package default). When `"off"`,

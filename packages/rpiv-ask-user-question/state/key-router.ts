@@ -1,5 +1,6 @@
 import { Key, matchesKey } from "@earendil-works/pi-tui";
 import type { QuestionAnswer } from "../tool/types.js";
+import type { PreviewScrollAmount } from "../view/components/preview/preview-block-renderer.js";
 import { ROW_INTENT_META } from "./row-intent.js";
 import type { QuestionnaireRuntime, QuestionnaireState } from "./state.js";
 
@@ -23,6 +24,8 @@ export type QuestionnaireAction =
 	| { kind: "input_edit"; value: string }
 	| { kind: "input_replace"; value: string }
 	| { kind: "tab_switch"; nextTab: number }
+	| { kind: "preview_focus"; focused: boolean }
+	| { kind: "preview_scroll"; amount: PreviewScrollAmount }
 	| { kind: "confirm"; answer: QuestionAnswer; autoAdvanceTab?: number }
 	| { kind: "toggle"; index: number }
 	| { kind: "multi_confirm"; selected: string[]; autoAdvanceTab?: number }
@@ -316,11 +319,25 @@ export function routeKey(data: string, state: QuestionnaireState, runtime: Quest
 
 	if (state.collapsed) return routeCollapsed(kb, data);
 	if (state.notesVisible) return routeNotesMode(kb, data);
+	if (state.previewFocused) {
+		if (kb.matches(data, KEYBIND_CANCEL)) return { kind: "cancel" };
+		if (matchesKey(data, Key.tab) || isConfirm(kb, data)) return { kind: "preview_focus", focused: false };
+		const tab = tabSwitchAction(data, state, runtime);
+		if (tab) return tab;
+		if (kb.matches(data, KEYBIND_UP)) return { kind: "preview_scroll", amount: -1 };
+		if (kb.matches(data, KEYBIND_DOWN)) return { kind: "preview_scroll", amount: 1 };
+		if (matchesKey(data, Key.pageUp)) return { kind: "preview_scroll", amount: "page-up" };
+		if (matchesKey(data, Key.pageDown)) return { kind: "preview_scroll", amount: "page-down" };
+		if (matchesKey(data, Key.home)) return { kind: "preview_scroll", amount: "home" };
+		if (matchesKey(data, Key.end)) return { kind: "preview_scroll", amount: "end" };
+		return { kind: "ignore" };
+	}
 	if (state.inputMode) return routeInputMode(kb, data, state, runtime);
 	if (runtime.isMulti && state.currentTab === runtime.questions.length) {
 		return routeSubmitTab(kb, data, state, runtime);
 	}
 
+	if (matchesKey(data, Key.tab) && runtime.hasPreview) return { kind: "preview_focus", focused: true };
 	const tab = tabSwitchAction(data, state, runtime);
 	if (tab) return tab;
 

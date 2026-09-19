@@ -13,7 +13,7 @@
   "hint.clear": "Ctrl+U — очистити",
   "hint.toggle": "Space — перемкнути",
   "hint.notes": "n — додати нотатки",
-  "hint.tab": "Tab — наступне питання",
+  "hint.tab": "←/→ — перемикання питань",
   "hint.cancel": "Esc — скасувати",
 
   "review.heading": "Перегляньте свої відповіді",

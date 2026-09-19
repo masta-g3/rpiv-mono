@@ -30,14 +30,20 @@ export function stripFenceMarkers(lines: readonly string[]): string[] {
  * Wraps `lines` in a 4-sided ASCII border with 1 col of inner horizontal padding.
  * Layout per content row: `│` + ` ` + content padded to `contentInner` + ` ` + `│`,
  * where `contentInner = width - BORDER_HORIZONTAL_OVERHEAD - 2 * BORDER_INNER_PADDING_HORIZONTAL`.
- * Top/bottom dash runs span corner-to-corner (`width - BORDER_HORIZONTAL_OVERHEAD`). When
- * `hidden > 0`, the bottom-row dash run is replaced with ` ✂ ── N lines hidden ── ` (corners stay).
+ * Top/bottom dash runs span corner-to-corner (`width - BORDER_HORIZONTAL_OVERHEAD`).
+ * A partial viewport carries its line range and directional overflow cues in the bottom border.
  */
+export interface PreviewPosition {
+	start: number;
+	end: number;
+	total: number;
+}
+
 export function renderBorderedBox(
 	lines: readonly string[],
 	width: number,
 	colorFn: (s: string) => string,
-	hidden = 0,
+	position?: PreviewPosition,
 ): string[] {
 	const dashSpan = Math.max(1, width - BORDER_HORIZONTAL_OVERHEAD);
 	const contentInner = Math.max(1, dashSpan - 2 * BORDER_INNER_PADDING_HORIZONTAL);
@@ -48,11 +54,13 @@ export function renderBorderedBox(
 		const padded = truncateToWidth(line, contentInner, "", true);
 		out.push(`${colorFn("│")}${pad}${padded}${pad}${colorFn("│")}`);
 	}
-	if (hidden > 0) {
-		const indicator = ` ✂ ── ${hidden} lines hidden ── `;
-		const space = dashSpan - indicator.length;
-		const leftFill = "─".repeat(Math.max(0, Math.floor(space / 2)));
-		const rightFill = "─".repeat(Math.max(0, dashSpan - leftFill.length - indicator.length));
+	if (position && position.total > lines.length) {
+		const cue = `${position.start > 1 ? "↑" : ""}${position.end < position.total ? "↓" : ""}`;
+		const label = ` ${cue} lines ${position.start}–${position.end} of ${position.total} `;
+		const indicator = truncateToWidth(label, dashSpan, "…");
+		const space = Math.max(0, dashSpan - visibleWidth(indicator));
+		const leftFill = "─".repeat(Math.floor(space / 2));
+		const rightFill = "─".repeat(space - leftFill.length);
 		out.push(colorFn(`└${leftFill}${indicator}${rightFill}┘`));
 	} else {
 		out.push(colorFn(`└${"─".repeat(dashSpan)}┘`));

@@ -82,6 +82,7 @@ export const selectPreviewPaneProps: PerTabSelector<PreviewPaneProps> = (state, 
 	notesVisible: state.notesVisible,
 	selectedIndex: state.optionIndex,
 	focused: ctx.activeView === "options",
+	previewFocused: ctx.activeView === "preview",
 	inputMode: state.inputMode,
 });
 

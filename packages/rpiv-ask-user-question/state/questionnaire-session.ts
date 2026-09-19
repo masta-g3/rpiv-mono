@@ -44,6 +44,7 @@ function initialState(): QuestionnaireState {
 		optionIndex: 0,
 		inputMode: false,
 		notesVisible: false,
+		previewFocused: false,
 		answers: new Map(),
 		multiSelectChecked: new Set(),
 		customDraftsByTab: new Map(),
@@ -75,6 +76,7 @@ export class QuestionnaireSession {
 	private readonly collapseKey: string;
 	private readonly canReopenWhileHidden: boolean;
 	private inputEditorOpen = false;
+	private scrollPreview: QuestionnaireBuilt["scrollPreview"] = () => {};
 
 	/**
 	 * Overlay handle captured by `ctx.ui.custom`'s `onHandle` callback. Lets the session
@@ -112,6 +114,7 @@ export class QuestionnaireSession {
 		this.notesInput = built.notesInput;
 		this.inlineInput = built.inlineInput;
 		this.viewAdapter = built.adapter;
+		this.scrollPreview = built.scrollPreview;
 
 		this.component = this.assembleComponent(built, config.theme);
 		this.viewAdapter.apply(this.state);
@@ -192,6 +195,9 @@ export class QuestionnaireSession {
 			case "forward_notes_keystroke":
 				this.notesInput.handleInput(effect.data);
 				return;
+			case "scroll_preview":
+				this.scrollPreview(effect.amount);
+				return;
 			case "set_overlay_hidden":
 				// No-op until `setOverlayHandle` has been called (the handle arrives via
 				// `ctx.ui.custom`'s `onHandle` right after the overlay is shown), and
@@ -246,6 +252,7 @@ export class QuestionnaireSession {
 			isMulti: this.isMulti,
 			currentItem: this.currentItem(),
 			items: this.itemsByTab[this.state.currentTab] ?? [],
+			hasPreview: Boolean(this.questions[this.state.currentTab]?.options[this.state.optionIndex]?.preview?.length),
 			collapseKey: this.collapseKey,
 		};
 	}
