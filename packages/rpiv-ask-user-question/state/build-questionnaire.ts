@@ -51,6 +51,7 @@ export interface QuestionnaireBuildConfig {
 
 export interface QuestionnaireBuilt {
 	adapter: QuestionnairePropsAdapter;
+	scrollPreview: (amount: import("../view/components/preview/preview-block-renderer.js").PreviewScrollAmount) => void;
 	notesInput: Editor;
 	inlineInput: Editor;
 	render: (width: number) => string[];
@@ -158,7 +159,7 @@ class QuestionnaireBuilder {
 		const globalBindings = this.buildGlobalBindings(dialog, submitPicker, tabBar);
 		const perTabBindings = this.buildPerTabBindings();
 		const adapter = this.buildAdapter(tabs, globalBindings, perTabBindings);
-		return this.handle(adapter, dialog);
+		return this.handle(adapter, dialog, tabs);
 	}
 
 	private makeSelectTheme(): WrappingSelectTheme {
@@ -321,9 +322,14 @@ class QuestionnaireBuilder {
 		});
 	}
 
-	private handle(adapter: QuestionnairePropsAdapter, dialog: DialogView): QuestionnaireBuilt {
+	private handle(
+		adapter: QuestionnairePropsAdapter,
+		dialog: DialogView,
+		tabs: ReadonlyArray<TabComponents>,
+	): QuestionnaireBuilt {
 		return {
 			adapter,
+			scrollPreview: (amount) => tabs[this.getCurrentTab()]?.preview.scroll(amount),
 			notesInput: this.notesInput,
 			inlineInput: this.inlineInput,
 			render: (w) => dialog.render(w),

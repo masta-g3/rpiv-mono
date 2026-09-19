@@ -67,6 +67,8 @@ const keybindings = {
 };
 
 interface SessionTestOptions {
+	columns?: number;
+	rows?: number;
 	params?: QuestionParams;
 	itemsByTab?: WrappingSelectItem[][];
 	editInput?: (value: string) => Promise<string | undefined>;
@@ -77,7 +79,10 @@ function makeSession(options: SessionTestOptions = {}) {
 	const sessionParams = options.params ?? params;
 	const done = vi.fn<(result: QuestionnaireResult) => void>();
 	const session = new QuestionnaireSession({
-		tui: { terminal: { columns: 120, rows: 40 }, requestRender: vi.fn() } as unknown as TUI,
+		tui: {
+			terminal: { columns: options.columns ?? 120, rows: options.rows ?? 40 },
+			requestRender: vi.fn(),
+		} as unknown as TUI,
 		theme: makeTheme() as unknown as Theme,
 		params: sessionParams,
 		itemsByTab: options.itemsByTab ?? itemsFor(sessionParams),
@@ -94,6 +99,90 @@ function focusCustomAnswer(session: QuestionnaireSession): void {
 	session.dispatch(DOWN);
 	session.dispatch(DOWN);
 }
+
+describe("QuestionnaireSession — preview keyboard scrolling", () => {
+	const previewParams: QuestionParams = {
+		questions: [
+			{
+				question: "Inspect the generated file",
+				header: "Preview",
+				options: [
+					{
+						label: "Accept",
+						description: "Use it",
+						preview: Array.from({ length: 60 }, (_, i) => `preview line ${i + 1}`).join("\n"),
+					},
+					{ label: "Reject", description: "Do not use it" },
+				],
+			},
+		],
+	};
+
+	it("renders input-driven position changes in place and Enter only leaves preview focus", () => {
+		const { session, done } = makeSession({ params: previewParams });
+		const first = session.component.render(120).join("\n");
+		expect(first).toContain("lines 1–");
+		expect(first).toContain("of 60");
+		session.dispatch(TAB);
+		session.dispatch(DOWN);
+		const oneLine = session.component.render(120).join("\n");
+		expect(oneLine).toContain("lines 2–");
+		session.dispatch("\x1b[6~");
+		const paged = session.component.render(120).join("\n");
+		expect(paged).not.toContain("lines 2–");
+		session.dispatch("\x1b[F");
+		expect(session.component.render(120).join("\n")).toContain("–60 of 60");
+		session.dispatch(ENTER);
+		expect(done).not.toHaveBeenCalled();
+		session.dispatch(ENTER);
+		expect(done).toHaveBeenCalledWith(expect.objectContaining({ cancelled: false }));
+	});
+});
+
+describe("QuestionnaireSession — preview accessibility", () => {
+	it.each([
+		[40, 12, 1],
+		[80, 12, 1],
+		[120, 12, 1],
+		[120, 24, 1],
+		[40, 12, 2],
+		[80, 12, 2],
+		[120, 12, 2],
+	])(
+		"can reveal every preview line with a wrapped question at %ix%i with %i questions",
+		(columns, rows, questionCount) => {
+			const previewLines = Array.from({ length: 60 }, (_, i) => `CONTENT_${String(i + 1).padStart(2, "0")}`);
+			const { session, done } = makeSession({
+				columns,
+				rows,
+				params: {
+					questions: Array.from({ length: questionCount }, () => ({
+						question:
+							"Which option should we choose after inspecting all of the content in this long preview? ".repeat(
+								4,
+							),
+						header: "Preview",
+						options: [
+							{ label: "Accept", description: "Use this option", preview: previewLines.join("\n") },
+							{ label: "Reject", description: "Leave it unchanged" },
+						],
+					})),
+				},
+			});
+			session.component.render(columns);
+			session.dispatch(TAB);
+			const seen = new Set<string>();
+			for (let i = 0; i < 60; i++) {
+				const frame = session.component.render(columns);
+				expect(frame.length).toBeLessThanOrEqual(rows);
+				for (const line of previewLines) if (frame.some((row) => row.includes(line))) seen.add(line);
+				session.dispatch(DOWN);
+			}
+			expect([...seen]).toEqual(previewLines);
+			expect(done).not.toHaveBeenCalled();
+		},
+	);
+});
 
 describe("QuestionnaireSession — custom-answer drafts", () => {
 	it("preserves a draft while browsing options and restores it on return", () => {

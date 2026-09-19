@@ -1,5 +1,9 @@
 #!/bin/sh
 
+# Git exports repository-local variables to hooks. Clear them so test fixtures that
+# create their own repositories cannot resolve commands against this checkout.
+unset $(git rev-parse --local-env-vars)
+
 echo "Running test suite with coverage before push..."
 npm run coverage
 if [ $? -ne 0 ]; then

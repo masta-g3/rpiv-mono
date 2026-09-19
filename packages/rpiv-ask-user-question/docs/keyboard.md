@@ -8,19 +8,23 @@ adapts to the size of your terminal.
 | Key | What it does | Where it applies |
 | --- | --- | --- |
 | `↑` / `↓` | Move between rows. Wraps at both ends. | Option list, Submit picker |
-| `Enter` | Confirm the focused option, commit typed text, close notes, or activate the focused Submit-picker row. | Everywhere |
+| `Enter` | Confirm an option, commit typed text, close notes, or activate a Submit-picker row. In preview focus, return to choices without answering. | Everywhere |
 | `Shift+Enter` | Insert a newline. | `Type something.` input, notes editor |
 | `Esc` | Cancel the whole questionnaire. | Everywhere except the notes editor, where it closes notes |
-| `Tab` / `Shift+Tab` | Next / previous tab, wrapping. `→` / `←` do the same. | Multi-question dialogs only |
+| `Tab` | Switch between choices and the selected preview. Without a selected preview, move to the next question tab. | Choices and preview; next-tab behavior requires multiple questions |
+| `←` / `→`, `Shift+Tab` | Previous / next question tab; `Shift+Tab` goes to the previous tab. Wraps at both ends. | Multi-question dialogs, outside text editing |
+| `↑` / `↓`, `Page Up` / `Page Down` | Scroll the preview by one displayed line or one page. | Preview focus |
+| `Home` / `End` | Go to the beginning / end of the preview. | Preview focus |
 | `Space` | Toggle the focused checkbox. | Multi-select questions |
-| `n` | Open the notes editor for the focused question — or, on the Submit tab, the global note for the whole questionnaire. | Every question tab; the Submit tab in multi-question dialogs |
+| `n` | Open the notes editor for the focused question — or, on the Submit tab, the global note for the whole questionnaire. | Option list or Submit picker focused |
 | `Ctrl+G` | Open Pi's configured external editor with the current custom-answer draft. | `Type something.` input |
 | `Ctrl+U` | Clear the current custom-answer draft. | `Type something.` input |
 | `Ctrl+]` | Collapse or expand the dialog. Configurable via `collapseKey`. | Everywhere, including while collapsed |
 
-The table names the default keys; the dialog actually follows your Pi keybindings.
-Confirm listens to both `tui.select.confirm` and `tui.input.submit`, and a key bound to
-`tui.input.newLine` always inserts a newline even if it also matches confirm. So a
+Selection, confirmation, and editing follow your Pi keybindings. Preview focus uses
+`Tab`; paging and endpoint navigation use the keys listed above. Confirm listens to
+both `tui.select.confirm` and `tui.input.submit`. Inside text editors, a key bound to
+`tui.input.newLine` inserts a newline even if it also matches confirm. So a
 Slack-style configuration — `enter` folded into `tui.input.newLine`, submit moved to
 `ctrl+enter` — keeps working: `enter` breaks lines, and your submit key confirms
 everywhere `Enter` does.
@@ -56,9 +60,10 @@ against the canonical English strings.
 
 ## Notes
 
-`n` opens a notes editor on any question tab, whether the question is single- or
-multi-select and whether or not its options carry previews. Notes are stored in a
-side-band keyed by tab index, not inside the answer, so writing a note does not mark a
+With the option list focused, `n` opens a notes editor on any question tab, whether the
+question is single- or multi-select and whether or not its options carry previews.
+If the preview has focus, press `Tab` or `Enter` to return to the choices first.
+Notes are stored in a side-band keyed by tab index, not inside the answer, so writing a note does not mark a
 question as answered — the Submit tab still lists it as outstanding. The note merges into
 the answer when you confirm it, and reaches the model as `user notes: <text>`.
 
@@ -97,9 +102,16 @@ and a bordered monospace preview box on the right — but only when both the ter
 the dialog pane are at least 100 columns wide. Below that, the preview stacks underneath
 the options instead.
 
-When the dialog is taller than the terminal, the body scrolls between a sticky heading and
-a sticky footer, and an overflow indicator shows which direction is clipped: `↑` for
-content above, `↓` for content below, `↕` for both.
+The preview uses the available terminal height. Press `Tab` from a preview-bearing
+option to focus its highlighted border. Scrolling changes only the visible preview,
+not the chosen option or answer. A partial preview shows its displayed-line range
+(`lines 1–12 of 60`) and `↑` / `↓` cues. Each option retains its scroll position while
+you browse. Preview scrolling is keyboard-only; the mouse wheel does not scroll it.
+
+When the dialog is taller than the terminal, its visible body follows the focused
+option or preview between fixed top and bottom controls. The question text can scroll
+out of view to make room. Overflow indicators show clipped content: `↑` above,
+`↓` below, or `↕` in both directions.
 
 The footer hint line adapts to context — it drops the notes hint and appends the
 `Shift+Enter` newline hint whenever a text editor has the keyboard, with `Ctrl+U` still at

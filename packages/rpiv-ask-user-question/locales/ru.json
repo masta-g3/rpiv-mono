@@ -13,7 +13,7 @@
   "hint.clear": "Ctrl+U — очистить",
   "hint.toggle": "Space — переключить",
   "hint.notes": "n — добавить заметки",
-  "hint.tab": "Tab — следующий вопрос",
+  "hint.tab": "←/→ — переключение вопросов",
   "hint.cancel": "Esc — отменить",
 
   "review.heading": "Проверьте свои ответы",

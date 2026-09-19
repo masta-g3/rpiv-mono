@@ -31,6 +31,7 @@ export type Effect =
 	 * behind the modal.
 	 */
 	| { kind: "set_overlay_hidden"; hidden: boolean }
+	| { kind: "scroll_preview"; amount: Extract<QuestionnaireAction, { kind: "preview_scroll" }>["amount"] }
 	| { kind: "done"; result: QuestionnaireResult };
 
 export interface ApplyResult {
@@ -124,6 +125,7 @@ function switchTabResult(state: QuestionnaireState, nextTab: number, ctx: ApplyC
 		optionIndex: 0,
 		inputMode: false,
 		notesVisible: false,
+		previewFocused: false,
 		submitChoiceIndex: 0,
 		multiSelectChecked: syncMultiSelectFromAnswers(state.answers, ctx.questions, nextTab),
 		notesDraft: notesValue,
@@ -192,6 +194,14 @@ const inputReplaceHandler: Handler<"input_replace"> = (state, action, _ctx) => (
 });
 
 const tabSwitchHandler: Handler<"tab_switch"> = (state, action, ctx) => switchTabResult(state, action.nextTab, ctx);
+const previewFocusHandler: Handler<"preview_focus"> = (state, action, _ctx) => ({
+	state: { ...state, previewFocused: action.focused },
+	effects: [],
+});
+const previewScrollHandler: Handler<"preview_scroll"> = (state, action, _ctx) => ({
+	state,
+	effects: [{ kind: "scroll_preview", amount: action.amount }],
+});
 
 const confirmHandler: Handler<"confirm"> = (state, action, ctx) => {
 	let answer = action.answer;
@@ -317,6 +327,8 @@ const HANDLERS: { [K in QuestionnaireAction["kind"]]: Handler<K> } = {
 	input_edit: inputEditHandler,
 	input_replace: inputReplaceHandler,
 	tab_switch: tabSwitchHandler,
+	preview_focus: previewFocusHandler,
+	preview_scroll: previewScrollHandler,
 	confirm: confirmHandler,
 	toggle: toggleHandler,
 	multi_confirm: multiConfirmHandler,

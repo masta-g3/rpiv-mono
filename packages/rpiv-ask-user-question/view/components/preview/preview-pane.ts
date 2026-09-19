@@ -2,7 +2,7 @@ import { type Component, truncateToWidth, visibleWidth } from "@earendil-works/p
 import type { QuestionData } from "../../../tool/types.js";
 import type { StatefulView } from "../../stateful-view.js";
 import type { OptionListView } from "../option-list-view.js";
-import type { PreviewBlockRenderer } from "./preview-block-renderer.js";
+import type { PreviewBlockRenderer, PreviewScrollAmount } from "./preview-block-renderer.js";
 import {
 	bodyWidths,
 	columnWidths,
@@ -48,6 +48,7 @@ export interface PreviewPaneProps {
 	notesVisible: boolean;
 	selectedIndex: number;
 	focused: boolean;
+	previewFocused?: boolean;
 	/**
 	 * True while the "other" (custom-answer) row is focused and accepting input
 	 * (`state.inputMode`, set by the reducer via `ROW_INTENT_META.other.activatesInputMode`).
@@ -82,6 +83,8 @@ export class PreviewPane implements StatefulView<PreviewPaneProps>, Component {
 	private readonly optionListView: OptionListView;
 	private readonly previewBlock: PreviewBlockRenderer;
 	private props: PreviewPaneProps;
+	private availableHeight: number | undefined;
+	private lastWidth = 80;
 	/**
 	 * Cross-tab max left-width getter. Set exactly once by `buildQuestionnaire.injectGlobalLeftWidth`
 	 * before any render. Initialized to a throwing sentinel so missing injection is a hard fail
@@ -111,6 +114,19 @@ export class PreviewPane implements StatefulView<PreviewPaneProps>, Component {
 		this.props = props;
 	}
 
+	setAvailableHeight(rows: number): void {
+		this.availableHeight = Math.max(1, rows);
+	}
+
+	scroll(amount: PreviewScrollAmount): void {
+		const mode = decideLayout(this.getTerminalWidth(), this.lastWidth);
+		const adaptiveLeft = this.getAdaptiveLeft(this.lastWidth);
+		const { optionsWidth, previewWidth } = bodyWidths(this.lastWidth, mode, adaptiveLeft);
+		const optionsHeight = this.optionListView.render(optionsWidth).length;
+		const viewport = this.previewViewportRows(mode, optionsHeight);
+		this.previewBlock.scroll(this.props.selectedIndex, amount, viewport, previewWidth);
+	}
+
 	handleInput(_data: string): void {}
 
 	invalidate(): void {
@@ -119,6 +135,7 @@ export class PreviewPane implements StatefulView<PreviewPaneProps>, Component {
 	}
 
 	render(width: number): string[] {
+		this.lastWidth = width;
 		if (this.question.multiSelect === true) return this.optionListView.render(width);
 		// Spec: hide the preview pane entirely when no option carries a `preview`.
 		if (!this.previewBlock.hasAnyPreview()) return this.optionListView.render(width);
@@ -132,8 +149,9 @@ export class PreviewPane implements StatefulView<PreviewPaneProps>, Component {
 		if (mode === "side-by-side") return this.renderSideBySide(width, mode);
 
 		// Stacked: options + blank gap + preview block.
+		const optionLines = this.optionListView.render(width);
 		return [
-			...this.optionListView.render(width),
+			...optionLines,
 			...Array(STACKED_GAP_ROWS).fill(""),
 			...this.previewBlock.renderBlock(
 				width,
@@ -141,6 +159,8 @@ export class PreviewPane implements StatefulView<PreviewPaneProps>, Component {
 				mode,
 				this.props.focused,
 				this.props.notesVisible,
+				this.previewViewportRows(mode, optionLines.length),
+				this.props.previewFocused,
 			),
 		];
 	}
@@ -152,8 +172,21 @@ export class PreviewPane implements StatefulView<PreviewPaneProps>, Component {
 		// side-by-side leftWidth), mirroring `render`'s full-width option list.
 		if (this.props.inputMode) return this.optionListView.focusedItemRowRange(width);
 		const mode = decideLayout(this.getTerminalWidth(), width);
-		if (mode === "stacked") return this.optionListView.focusedItemRowRange(width);
 		const adaptiveLeft = this.getAdaptiveLeft(width);
+		const { optionsWidth, previewWidth } = bodyWidths(width, mode, adaptiveLeft);
+		if (this.props.previewFocused) {
+			const optionsHeight = this.optionListView.render(optionsWidth).length;
+			const previewHeight = this.previewBlock.blockHeight(
+				previewWidth,
+				this.props.selectedIndex,
+				mode,
+				this.previewViewportRows(mode, optionsHeight),
+			);
+			return mode === "stacked"
+				? [optionsHeight + STACKED_GAP_ROWS, optionsHeight + STACKED_GAP_ROWS + previewHeight]
+				: [0, previewHeight];
+		}
+		if (mode === "stacked") return this.optionListView.focusedItemRowRange(width);
 		const { leftWidth } = columnWidths(width, adaptiveLeft);
 		return this.optionListView.focusedItemRowRange(leftWidth);
 	}
@@ -168,7 +201,12 @@ export class PreviewPane implements StatefulView<PreviewPaneProps>, Component {
 		const adaptiveLeft = this.getAdaptiveLeft(width);
 		const { optionsWidth, previewWidth } = bodyWidths(width, mode, adaptiveLeft);
 		const optionsHeight = this.optionListView.render(optionsWidth).length;
-		const previewBlockHeight = this.previewBlock.blockHeight(previewWidth, this.props.selectedIndex, mode);
+		const previewBlockHeight = this.previewBlock.blockHeight(
+			previewWidth,
+			this.props.selectedIndex,
+			mode,
+			this.previewViewportRows(mode, optionsHeight),
+		);
 		if (mode === "side-by-side") return Math.max(optionsHeight, previewBlockHeight);
 		return optionsHeight + STACKED_GAP_ROWS + previewBlockHeight;
 	}
@@ -185,18 +223,29 @@ export class PreviewPane implements StatefulView<PreviewPaneProps>, Component {
 		const optionsHeight = this.optionListView.render(optionsWidth).length;
 		let maxPreviewBlock = 0;
 		for (let i = 0; i < this.question.options.length; i++) {
-			const h = this.previewBlock.blockHeight(previewWidth, i, mode);
+			const h = this.previewBlock.blockHeight(previewWidth, i, mode, this.previewViewportRows(mode, optionsHeight));
 			if (h > maxPreviewBlock) maxPreviewBlock = h;
 		}
 		if (mode === "side-by-side") return Math.max(optionsHeight, maxPreviewBlock);
 		return optionsHeight + STACKED_GAP_ROWS + maxPreviewBlock;
 	}
 
+	private previewViewportRows(mode: PreviewLayoutMode, optionsHeight: number): number {
+		if (this.availableHeight === undefined) return mode === "side-by-side" ? 16 : 11;
+		const blockOverhead = 4;
+		return Math.max(
+			1,
+			mode === "side-by-side"
+				? this.availableHeight - blockOverhead
+				: this.availableHeight - optionsHeight - STACKED_GAP_ROWS - blockOverhead,
+		);
+	}
+
 	private renderSideBySide(width: number, mode: PreviewLayoutMode): string[] {
 		const adaptiveLeft = this.getAdaptiveLeft(width);
 		const { leftWidth, rightWidth, gap } = columnWidths(width, adaptiveLeft);
 		const leftLines = this.optionListView.render(leftWidth);
-		const rightLines = this.renderPaddedPreviewLines(rightWidth, mode);
+		const rightLines = this.renderPaddedPreviewLines(rightWidth, mode, leftLines.length);
 		const rows = Math.max(leftLines.length, rightLines.length);
 		const gapStr = " ".repeat(gap);
 		const out: string[] = [];
@@ -211,7 +260,7 @@ export class PreviewPane implements StatefulView<PreviewPaneProps>, Component {
 		return out;
 	}
 
-	private renderPaddedPreviewLines(colWidth: number, mode: PreviewLayoutMode): string[] {
+	private renderPaddedPreviewLines(colWidth: number, mode: PreviewLayoutMode, optionsHeight: number): string[] {
 		const inner = Math.max(1, colWidth - PREVIEW_PADDING_LEFT);
 		const contentLines = this.previewBlock.renderBlock(
 			inner,
@@ -219,6 +268,8 @@ export class PreviewPane implements StatefulView<PreviewPaneProps>, Component {
 			mode,
 			this.props.focused,
 			this.props.notesVisible,
+			this.previewViewportRows(mode, optionsHeight),
+			this.props.previewFocused,
 		);
 		const boxWidth = Math.max(1, visibleWidth(contentLines[0] ?? ""));
 		const boxAlignedPad = Math.max(PREVIEW_PADDING_LEFT, colWidth - boxWidth);

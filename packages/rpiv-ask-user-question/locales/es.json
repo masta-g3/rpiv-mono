@@ -13,7 +13,7 @@
   "hint.clear": "Ctrl+U para borrar",
   "hint.toggle": "Espacio para alternar",
   "hint.notes": "n para añadir notas",
-  "hint.tab": "Tab para cambiar de pregunta",
+  "hint.tab": "←/→ para cambiar de pregunta",
   "hint.cancel": "Esc para cancelar",
 
   "review.heading": "Revisa tus respuestas",
